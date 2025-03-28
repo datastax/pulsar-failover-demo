@@ -1,28 +1,30 @@
 package com.datastax.demo.streaming;
 
+import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.ServiceUrlProvider;
+import org.apache.pulsar.client.impl.ControlledClusterFailover;
+
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.ServiceUrlProvider;
-import org.apache.pulsar.client.impl.ControlledClusterFailover;
 
 public class StreamUtil {
 	private StreamConfig config = null;
 	private ServiceUrlProvider provider = null;
 	private PulsarClient client = null;
 	private DateTimeFormatter dtfDateTime = null;
+    private Map<String, String> providerHeaders = null;
+    private String name = null;
 
-	public String getcurrentTime() {
-		return dtfDateTime.format(LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()));
-	}
-
-	public StreamUtil() {
+    public StreamUtil(String[] args) {
 		config = new StreamConfig();
+        providerHeaders = new HashMap<>();
+        validateArgs(args);
 		// Initialize Provider & Client
 		getControlledFailoverClient();
 		try {
@@ -34,14 +36,21 @@ public class StreamUtil {
 
 	}
 
+    public String getcurrentTime() {
+        return dtfDateTime.format(LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()));
+    }
 	public PulsarClient getClient() {
 		return client;
 	}
 
 	public PulsarClient getControlledFailoverClient() {
 		try {
-			provider = ControlledClusterFailover.builder().defaultServiceUrl(config.getDefaultCluster().getServiceUrl())
-					.checkInterval(5, TimeUnit.SECONDS).urlProvider(config.getProviderUrl()).build();
+            provider = ControlledClusterFailover.builder()
+                    .defaultServiceUrl(config.getDefaultCluster().getServiceUrl())
+                    .checkInterval(5, TimeUnit.SECONDS)
+                    .urlProvider(config.getProviderUrl())
+                    .urlProviderHeader(providerHeaders)
+                    .build();
 			client = PulsarClient.builder().serviceUrlProvider(provider).build();
 			provider.initialize(client);
 		} catch (IOException e) {
@@ -81,5 +90,28 @@ public class StreamUtil {
 		// If no period is found, return the whole remainder
 		return remainder;
 	}
+
+    public void validateArgs(String[] args) {
+        if (args == null || args.length == 0) {
+            throw new IllegalArgumentException("Mandatory arguments missing!");
+        } else if (args.length < 2 || args.length > 3) {
+            throw new IllegalArgumentException("Incorrect number of arguments!");
+        }
+
+        //CLI args
+        name = args[0];
+        String region = args[1];
+        String group = (args.length == 3 ? args[2] : "");
+        System.out.printf("Producer: %s,%nRegion: %s,%nGroup: %s%n", name, region, group);
+
+        //Setting provider headers
+        providerHeaders.put("name", name);
+        providerHeaders.put("region", region);
+        providerHeaders.put("group", group);
+    }
+
+    public String getAppName() {
+        return name;
+    }
 
 }
